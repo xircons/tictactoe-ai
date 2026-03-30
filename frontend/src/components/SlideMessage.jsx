@@ -1,4 +1,5 @@
 import React from 'react'
+import PropTypes from 'prop-types'
 
 const SlideMessage = ({ message, show }) => {
   return (
@@ -6,6 +7,11 @@ const SlideMessage = ({ message, show }) => {
       {message}
     </div>
   )
+}
+
+SlideMessage.propTypes = {
+  message: PropTypes.string.isRequired,
+  show: PropTypes.bool.isRequired
 }
 
 export default SlideMessage

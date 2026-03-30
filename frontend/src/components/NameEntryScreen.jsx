@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import PropTypes from 'prop-types'
 
 const NameEntryScreen = ({ show, onStartGame }) => {
   const [playerName, setPlayerName] = useState('')
@@ -41,6 +42,11 @@ const NameEntryScreen = ({ show, onStartGame }) => {
       </div>
     </div>
   )
+}
+
+NameEntryScreen.propTypes = {
+  show: PropTypes.bool.isRequired,
+  onStartGame: PropTypes.func.isRequired
 }
 
 export default NameEntryScreen

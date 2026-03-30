@@ -1,4 +1,5 @@
 import React from 'react'
+import PropTypes from 'prop-types'
 
 const WinModal = ({ show, message, onPlayAgain, onNewGame }) => {
   if (!show) return null
@@ -16,6 +17,13 @@ const WinModal = ({ show, message, onPlayAgain, onNewGame }) => {
       </div>
     </div>
   )
+}
+
+WinModal.propTypes = {
+  show: PropTypes.bool.isRequired,
+  message: PropTypes.string.isRequired,
+  onPlayAgain: PropTypes.func.isRequired,
+  onNewGame: PropTypes.func.isRequired
 }
 
 export default WinModal

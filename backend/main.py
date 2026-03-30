@@ -12,6 +12,8 @@ import os
 sys.path.append(os.path.dirname(__file__))
 
 from agents.perfect_agent import PerfectMinimaxAgent
+from agents.easy_agent import EasyAgent
+from agents.medium_agent import MediumAgent
 from core.tictactoe import TicTacToe
 
 app = Flask(__name__)
@@ -38,8 +40,10 @@ CORS(app, resources={
     }
 })
 
-# Initialize the AI agent
-ai_agent = PerfectMinimaxAgent()
+# Initialize the AI agents
+easy_agent = EasyAgent()
+medium_agent = MediumAgent()
+hard_agent = PerfectMinimaxAgent()
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -47,7 +51,11 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "message": "Tic-Tac-Toe API is running",
-        "agent": "Perfect Minimax AI"
+        "agents": {
+            "easy": easy_agent.name,
+            "medium": medium_agent.name,
+            "hard": hard_agent.name
+        }
     })
 
 @app.route('/api/move', methods=['POST'])
@@ -103,8 +111,8 @@ def get_ai_move():
         if len(game.get_available_actions()) == 0:
             return jsonify({"error": "No available moves"}), 400
         
-        # Get AI move
-        ai_move = ai_agent.choose_action(game)
+        # Get AI move (hard difficulty)
+        ai_move = hard_agent.choose_action(game)
         
         # Make the move to get updated board
         game.make_move(ai_move)
@@ -112,6 +120,116 @@ def get_ai_move():
         return jsonify({
             "move": ai_move,
             "message": f"AI plays position {ai_move}",
+            "board": game.board,
+            "game_over": game.game_over,
+            "winner": game.winner
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+@app.route('/api/move/easy', methods=['POST'])
+def get_easy_ai_move():
+    """Get easy AI move (random)"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        board = data.get('board')
+        player = data.get('player')
+        
+        if not board:
+            return jsonify({"error": "Board state is required"}), 400
+        
+        if not isinstance(board, list) or len(board) != 9:
+            return jsonify({"error": "Board must be a list of 9 elements"}), 400
+        
+        if player is None:
+            return jsonify({"error": "Player is required"}), 400
+        
+        # Validate board values
+        for i, cell in enumerate(board):
+            if cell not in [0, 1, -1]:
+                return jsonify({"error": f"Invalid value {cell} at position {i}"}), 400
+        
+        # Create game instance
+        game = TicTacToe()
+        game.board = board.copy()
+        game.current_player = player
+        
+        # Check if game is already over
+        if game.check_winner():
+            return jsonify({"error": "Game is already won"}), 400
+        
+        if len(game.get_available_actions()) == 0:
+            return jsonify({"error": "No available moves"}), 400
+        
+        # Get easy AI move
+        ai_move = easy_agent.choose_action(game)
+        
+        # Make the move to get updated board
+        game.make_move(ai_move)
+        
+        return jsonify({
+            "move": ai_move,
+            "message": f"Easy AI plays position {ai_move}",
+            "board": game.board,
+            "game_over": game.game_over,
+            "winner": game.winner
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+@app.route('/api/move/medium', methods=['POST'])
+def get_medium_ai_move():
+    """Get medium AI move (heuristic)"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        board = data.get('board')
+        player = data.get('player')
+        
+        if not board:
+            return jsonify({"error": "Board state is required"}), 400
+        
+        if not isinstance(board, list) or len(board) != 9:
+            return jsonify({"error": "Board must be a list of 9 elements"}), 400
+        
+        if player is None:
+            return jsonify({"error": "Player is required"}), 400
+        
+        # Validate board values
+        for i, cell in enumerate(board):
+            if cell not in [0, 1, -1]:
+                return jsonify({"error": f"Invalid value {cell} at position {i}"}), 400
+        
+        # Create game instance
+        game = TicTacToe()
+        game.board = board.copy()
+        game.current_player = player
+        
+        # Check if game is already over
+        if game.check_winner():
+            return jsonify({"error": "Game is already won"}), 400
+        
+        if len(game.get_available_actions()) == 0:
+            return jsonify({"error": "No available moves"}), 400
+        
+        # Get medium AI move
+        ai_move = medium_agent.choose_action(game)
+        
+        # Make the move to get updated board
+        game.make_move(ai_move)
+        
+        return jsonify({
+            "move": ai_move,
+            "message": f"Medium AI plays position {ai_move}",
             "board": game.board,
             "game_over": game.game_over,
             "winner": game.winner
@@ -181,10 +299,15 @@ def method_not_allowed(error):
 
 if __name__ == '__main__':
     print("Starting Tic-Tac-Toe API server...")
-    print("Perfect Minimax AI agent loaded")
+    print("AI agents loaded:")
+    print(f"  - Easy: {easy_agent.name}")
+    print(f"  - Medium: {medium_agent.name}")
+    print(f"  - Hard: {hard_agent.name}")
     print("Available endpoints:")
     print("  GET  /api/health - Health check")
-    print("  POST /api/move   - Get AI move")
+    print("  POST /api/move - Get hard AI move")
+    print("  POST /api/move/easy - Get easy AI move")
+    print("  POST /api/move/medium - Get medium AI move")
     print("  POST /api/validate - Validate board state")
     
     port = int(os.environ.get('PORT', 5001))

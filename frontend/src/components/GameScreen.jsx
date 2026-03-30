@@ -1,4 +1,5 @@
 import React from 'react'
+import PropTypes from 'prop-types'
 
 const GameScreen = ({ 
   show, 
@@ -14,7 +15,7 @@ const GameScreen = ({
   return (
     <div className="game-screen active">
       <div className="game-header">
-        <div className="player-names">{playerNames.X} VS AI</div>
+        <div className="player-names">{playerNames.X} VS {playerNames.O}</div>
         <div className="score-board">
           <div className="score-item">
             <div className="score-label">{playerNames.X}</div>
@@ -57,6 +58,23 @@ const GameScreen = ({
       </button>
     </div>
   )
+}
+
+GameScreen.propTypes = {
+  show: PropTypes.bool.isRequired,
+  board: PropTypes.arrayOf(PropTypes.string).isRequired,
+  scores: PropTypes.shape({
+    X: PropTypes.number.isRequired,
+    O: PropTypes.number.isRequired,
+    draw: PropTypes.number.isRequired
+  }).isRequired,
+  playerNames: PropTypes.shape({
+    X: PropTypes.string.isRequired,
+    O: PropTypes.string.isRequired
+  }).isRequired,
+  onCellClick: PropTypes.func.isRequired,
+  onResetGame: PropTypes.func.isRequired,
+  onBackToMain: PropTypes.func.isRequired
 }
 
 export default GameScreen
