@@ -11,7 +11,6 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc/
 import time
 import numpy as np
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Dict, List, Tuple
 import json
 import yaml
@@ -22,7 +21,6 @@ import seaborn as sns
 from datetime import datetime
 import os
 import sys
-import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from core.tictactoe import TicTacToe
@@ -92,26 +90,8 @@ class UltraAdvancedSelfPlayTrainer:
         return episode_id, winner, episode_length
     
     def train_parallel_batch(self, episode_batch: List[int]) -> List[Tuple[int, int, int]]:
-        """Train a batch of episodes in parallel."""
-        print(f"Debug: train_parallel_batch called with {len(episode_batch)} episodes")
-        print(f"Debug: use_parallel={self.use_parallel}, batch_size={len(episode_batch)}")
-        
-        if self.use_parallel and len(episode_batch) > 1:
-            print(f"Debug: Using parallel processing with {self.max_workers} workers")
-            try:
-                with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-                    print(f"Debug: Created ProcessPoolExecutor, mapping episodes...")
-                    results = list(executor.map(self.train_episode_parallel, episode_batch))
-                    print(f"Debug: Parallel processing completed, got {len(results)} results")
-            except Exception as e:
-                print(f"Debug: Parallel processing failed: {e}")
-                print(f"Debug: Falling back to sequential processing")
-                results = [self.train_episode_parallel(ep_id) for ep_id in episode_batch]
-        else:
-            print(f"Debug: Using sequential processing")
-            results = [self.train_episode_parallel(ep_id) for ep_id in episode_batch]
-        
-        return results
+        """Train a batch of episodes on the main process (Q-table must stay shared)."""
+        return [self.train_episode_parallel(ep_id) for ep_id in episode_batch]
     
     def setup_logging(self):
         """Setup logging for training metrics."""
@@ -232,10 +212,14 @@ class UltraAdvancedSelfPlayTrainer:
     
     def train(self):
         """Run the self-play training loop."""
+        batch_size = min(100, self.max_workers) if self.use_parallel else 1
         print("Ultra-Advanced Q-Learning Self-Play Training - Maximum Performance")
         print("=" * 80)
         print(f"Episodes: {self.episodes:,}")
-        print(f"Parallel processing: {self.use_parallel} ({self.max_workers} workers)")
+        print(
+            f"Sequential training on main process (shared Q); "
+            f"batch_size={batch_size} (use_parallel controls batch size only)"
+        )
         print(f"Early stopping: {self.early_stopping}")
         print(f"Learning rate: {self.agent.alpha_start} → {self.agent.alpha_end}")
         print(f"Discount factor (γ): {self.agent.gamma}")
@@ -249,66 +233,68 @@ class UltraAdvancedSelfPlayTrainer:
         self.training_start_time = time.time()
         
         print("Starting training with immediate progress updates...")
-        print("Progress will be shown every 1,000 episodes")
+        print(f"Detailed stats every {self.stats_interval:,} completed episodes")
         print("First update should appear in ~10-30 seconds")
         print()
         
-        # Training loop with parallel processing
+        # Training loop (batched sequential; episode advances by batch_size so use
+        # (episode - 1) % N for milestones — raw `episode % N` never hits for N coprime to batch_size).
         episode = 1
-        batch_size = min(100, self.max_workers) if self.use_parallel else 1
         
         print(f"Debug: Starting training loop with batch_size={batch_size}")
         print(f"Debug: use_parallel={self.use_parallel}")
         print(f"Debug: max_workers={self.max_workers}")
         
         while episode <= self.episodes:
-            # Create batch of episodes
-            batch_end = min(episode + batch_size - 1, self.episodes)
-            episode_batch = list(range(episode, batch_end + 1))
-            
-            print(f"Debug: About to train batch {episode}-{batch_end} ({len(episode_batch)} episodes)")
-            
-            # Train batch in parallel
-            batch_start_time = time.time()
-            print(f"Debug: Calling train_parallel_batch...")
-            results = self.train_parallel_batch(episode_batch)
-            batch_time = time.time() - batch_start_time
-            print(f"Debug: Batch completed in {batch_time:.2f}s, got {len(results)} results")
-            
-            # Process results
-            for ep_id, winner, episode_length in results:
-                self.episode_lengths.append(episode_length)
+                # Create batch of episodes
+                batch_end = min(episode + batch_size - 1, self.episodes)
+                episode_batch = list(range(episode, batch_end + 1))
                 
-                if winner == 1:
-                    self.win_counts['player_1'] += 1
-                elif winner == -1:
-                    self.win_counts['player_2'] += 1
-                else:
-                    self.win_counts['draw'] += 1
-            
-            episode = batch_end + 1
-            
-            # Update performance metrics
-            self.episodes_per_second = len(episode_batch) / batch_time
-            
-            # Show small progress indicator every 100 episodes
-            if episode % 100 == 0:
-                print(f"Episode {episode:,} completed | Speed: {self.episodes_per_second:.1f} ep/s")
-            
-            # Print detailed statistics
-            if episode % self.stats_interval == 0:
-                self._print_ultra_advanced_statistics(episode - 1, batch_time)
-            
-            # Save Q-table
-            if episode % self.save_interval == 0:
-                self.agent.save_q_table(self.q_table_file)
-            
-            # Check for early stopping
-            if self.early_stopping and episode > 100000:
-                if self.check_convergence():
-                    print(f"\nCONVERGENCE ACHIEVED at episode {episode - 1}!")
-                    print("Training terminated early due to convergence.")
-                    break
+                print(f"Debug: About to train batch {episode}-{batch_end} ({len(episode_batch)} episodes)")
+                
+                batch_start_time = time.time()
+                print(f"Debug: Calling train_parallel_batch...")
+                results = self.train_parallel_batch(episode_batch)
+                batch_time = time.time() - batch_start_time
+                print(f"Debug: Batch completed in {batch_time:.2f}s, got {len(results)} results")
+                
+                # Process results
+                for ep_id, winner, episode_length in results:
+                    self.episode_lengths.append(episode_length)
+                    
+                    if winner == 1:
+                        self.win_counts['player_1'] += 1
+                    elif winner == -1:
+                        self.win_counts['player_2'] += 1
+                    else:
+                        self.win_counts['draw'] += 1
+                
+                episode = batch_end + 1
+                
+                # Update performance metrics
+                self.episodes_per_second = (
+                    len(episode_batch) / batch_time if batch_time > 0 else 0.0
+                )
+                
+                completed = episode - 1
+                # Show small progress indicator every 100 completed episodes
+                if completed > 0 and completed % 100 == 0:
+                    print(f"Episode {completed:,} completed | Speed: {self.episodes_per_second:.1f} ep/s")
+                
+                # Print detailed statistics
+                if completed > 0 and completed % self.stats_interval == 0:
+                    self._print_ultra_advanced_statistics(completed, batch_time)
+                
+                # Save Q-table
+                if completed > 0 and completed % self.save_interval == 0:
+                    self.agent.save_q_table(self.q_table_file)
+                
+                # Check for early stopping
+                if self.early_stopping and episode > 100000:
+                    if self.check_convergence():
+                        print(f"\nCONVERGENCE ACHIEVED at episode {episode - 1}!")
+                        print("Training terminated early due to convergence.")
+                        break
         
         # Final save and statistics
         self.agent.save_q_table(self.q_table_file)
@@ -389,16 +375,26 @@ class UltraAdvancedSelfPlayTrainer:
         print("=" * 60)
         print(f"Total episodes: {self.episodes:,}")
         print(f"Total time: {total_time:.1f} seconds ({total_time/60:.1f} minutes)")
-        print(f"Average speed: {self.episodes/total_time:.1f} episodes/second")
-        print(f"Peak speed: {max([s['episodes_per_second'] for s in self.stats_history]):.1f} episodes/second")
+        if total_time > 0:
+            print(f"Average speed: {self.episodes/total_time:.1f} episodes/second")
+        else:
+            print("Average speed: n/a")
+        if self.stats_history:
+            peak = max(s["episodes_per_second"] for s in self.stats_history)
+            print(f"Peak speed: {peak:.1f} episodes/second")
+        else:
+            print("Peak speed: n/a (no stats checkpoints recorded)")
         print()
         
         # Final win rates
         total_games = sum(self.win_counts.values())
         print("Final Win Rates:")
-        print(f"  Player 1 (X): {self.win_counts['player_1']:,} ({self.win_counts['player_1']/total_games*100:.1f}%)")
-        print(f"  Player 2 (O): {self.win_counts['player_2']:,} ({self.win_counts['player_2']/total_games*100:.1f}%)")
-        print(f"  Draws: {self.win_counts['draw']:,} ({self.win_counts['draw']/total_games*100:.1f}%)")
+        if total_games > 0:
+            print(f"  Player 1 (X): {self.win_counts['player_1']:,} ({self.win_counts['player_1']/total_games*100:.1f}%)")
+            print(f"  Player 2 (O): {self.win_counts['player_2']:,} ({self.win_counts['player_2']/total_games*100:.1f}%)")
+            print(f"  Draws: {self.win_counts['draw']:,} ({self.win_counts['draw']/total_games*100:.1f}%)")
+        else:
+            print("  No games completed.")
         print()
         
         # Q-table statistics
@@ -413,9 +409,12 @@ class UltraAdvancedSelfPlayTrainer:
         print()
         
         # Episode length statistics
-        avg_length = np.mean(self.episode_lengths)
-        std_length = np.std(self.episode_lengths)
-        print(f"Episode Length: {avg_length:.1f} ± {std_length:.1f} moves")
+        if self.episode_lengths:
+            avg_length = float(np.mean(self.episode_lengths))
+            std_length = float(np.std(self.episode_lengths))
+            print(f"Episode Length: {avg_length:.1f} ± {std_length:.1f} moves")
+        else:
+            print("Episode Length: n/a")
         print()
         
         # Performance analysis
@@ -490,14 +489,24 @@ class UltraAdvancedSelfPlayTrainer:
 
 
 def load_config(config_file: str = "config.yaml") -> dict:
-    """Load configuration from YAML file."""
-    try:
-        with open(config_file, 'r') as f:
-            config = yaml.safe_load(f)
-        return config
-    except FileNotFoundError:
-        print(f"Config file {config_file} not found. Using default settings.")
-        return {}
+    """Load configuration from YAML file.
+
+    Searches CWD first, then the src/ directory (one level above this file).
+    """
+    candidates = [
+        config_file,
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), config_file),
+    ]
+    for path in candidates:
+        try:
+            with open(path, 'r') as f:
+                config = yaml.safe_load(f)
+            print(f"Loaded config from {path}")
+            return config
+        except FileNotFoundError:
+            continue
+    print(f"Config file {config_file} not found. Using default settings.")
+    return {}
 
 def set_deterministic_seed(seed: int = 42):
     """Set deterministic seed for reproducibility."""

@@ -6,7 +6,7 @@
 
 > This project transforms a simple 3×3 grid into a sophisticated artificial intelligence demonstration that showcases the evolution from basic games to advanced machine learning systems. At its core lies an Ultra-Advanced Q-Learning agent employing cutting-edge techniques including double Q-learning for stability, Dyna-Q for simulated experience learning, and experience replay with prioritized sampling. The system transcends traditional trial-and-error learning by incorporating tactical intelligence with immediate win/block detection, strategic position preferences, and MCTS-style evaluation for complex endgame positions.
 The brilliance of this implementation lies in its symmetry reduction technique, which recognizes that rotated boards represent identical strategic situations. By canonicalizing game states, the AI learns more efficiently, transforming thousands of possibilities into meaningful patterns that reflect a deeper understanding of how intelligence emerges from structured learning processes. This optimization demonstrates how simple rules can generate sophisticated behaviors through systematic exploration and adaptation.
-Beyond pure AI research, the project evolves into a complete production-ready ecosystem featuring a Flask backend that serves the trained model via RESTful APIs, a modern web frontend providing engaging gameplay experiences, and intelligent fallback systems that ensure continuous operation. When the Q-learning API becomes unavailable, the system seamlessly switches to perfect minimax algorithms, showcasing robust system design principles.
+Beyond pure AI research, the project evolves into a complete production-ready ecosystem featuring a Flask backend that serves the trained Q-table via RESTful APIs, a modern web frontend providing engaging gameplay experiences, and fallback behavior when the model file is missing or a state is unknown (random legal moves), so play can continue.
 The project exemplifies how derived values flow through complex interconnected systems, where each component—from the game engine's state representation to the Q-learning agent's strategic preferences emerging from thousands of self-play games—contributes to a greater whole. The configurable training system supports multiple modes ranging from quick 10,000-episode runs to intensive 100,000-episode sessions, complete with comprehensive analytics, real-time performance tracking, and convergence analysis that transforms raw training data into meaningful insights about AI learning processes.
 This multi-layered architecture demonstrates contemporary AI development practices, showcasing everything from low-level game mechanics to high-level user interfaces. The project proves that even elementary games can illuminate the deepest principles of artificial intelligence, serving as both an educational tool and practical demonstration of how modern machine learning techniques can be applied to create intelligent systems that are theoretically sound and practically useful in real-world applications.
 
@@ -32,10 +32,11 @@ tictactoe-qlearning/
 │   └── config.yaml               # Training configuration
 ├── backend/                       # Flask API server
 │   ├── agents/
-│   │   └── perfect_agent.py      # API agent implementation
+│   │   └── qlearning_agent.py   # Q-table inference (epsilon-greedy by difficulty)
 │   ├── core/
 │   │   └── tictactoe.py         # Game engine for API
-│   └── main.py                   # Flask server
+│   ├── main.py                  # Flask server
+│   └── q_table.json             # Trained weights (copy from project root after training)
 ├── frontend/                      # Web interface
 │   └── public/
 │       ├── index.html            # Main HTML file
@@ -100,13 +101,20 @@ tictactoe-qlearning/
    pip install -r requirements.txt
    ```
 
-2. **Configure environment** (optional)
+2. **Provide the trained Q-table for the API** (recommended for non-random AI)
+   ```bash
+   # After training, copy the default output next to the Flask app (or set Q_TABLE_PATH)
+   cp q_table.json backend/q_table.json
+   ```
+   If `backend/q_table.json` is missing or invalid, the API still runs but uses random legal moves until a valid file is available. Override the path with `Q_TABLE_PATH` (absolute or relative to how you start the server).
+
+3. **Configure environment** (optional)
    ```bash
    # Edit config.env if needed
    # Default settings work out of the box
    ```
 
-3. **Start the Flask server**
+4. **Start the Flask server**
    ```bash
    # From the project root
    python backend/main.py
@@ -115,13 +123,12 @@ tictactoe-qlearning/
    PORT=5001 python backend/main.py
    ```
 
-4. **Verify the API is running**
+5. **Verify the API is running**
    ```bash
    # Test the health endpoint
    curl http://localhost:5001/api/health
    
-   # Expected response:
-   # {"status": "healthy", "message": "Tic-Tac-Toe API is running", "agent": "Perfect Minimax AI"}
+   # Response includes q_table_loaded, q_states, policy.epsilon_by_difficulty, etc.
    ```
 
 ### Training the Q-Learning Agent
@@ -143,8 +150,9 @@ tictactoe-qlearning/
    - Performance plots generated automatically
 
 4. **Use trained model**
-   - Trained Q-table saved as `q_table.json`
-   - Can be loaded by the Q-learning agent for gameplay
+   - Trained Q-table saved as `q_table.json` (see `src/config.yaml` paths)
+   - Copy or symlink to `backend/q_table.json`, or set `Q_TABLE_PATH` when starting the API
+   - Difficulty in play is controlled by epsilon-greedy rates on the same table (`easy` / `medium` / `hard` in `POST /api/move`)
 
 ## License
 

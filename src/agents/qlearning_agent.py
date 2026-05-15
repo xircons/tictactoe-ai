@@ -334,10 +334,13 @@ class UltraAdvancedQLearningAgent:
         Train agent with prioritized starting positions for faster learning.
         """
         # 30% chance to start from partially filled board
-        if random.random() < 0.3 and self.episodes_trained > 1000:
+        use_prioritized = (
+            random.random() < 0.3 and self.episodes_trained > 1000
+        )
+        if use_prioritized:
             game = self._create_prioritized_start_position()
-        
-        game.reset()
+        else:
+            game.reset()
         self.episodes_trained += 1
         
         moves_made = []

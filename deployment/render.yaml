@@ -11,3 +11,6 @@ services:
         value: production
       - key: PORT
         value: $PORT
+      # Optional: absolute path to weights if not using default backend/q_table.json
+      # - key: Q_TABLE_PATH
+      #   value: /opt/render/project/src/backend/q_table.json

@@ -8,11 +8,10 @@ const API_CONFIG = {
     
     // Auto-detect environment
     getBaseUrl() {
-        let url;
-        // Always use production URL (Render.com) for consistency
-        // This ensures both local development and production use the same backend
-        url = this.PRODUCTION_URL;
-        
+        const url = import.meta.env.DEV
+            ? (import.meta.env.VITE_API_LOCAL_URL || 'http://localhost:5001')
+            : this.PRODUCTION_URL;
+
         console.log(`Using API URL: ${url}`);
         return url;
     },

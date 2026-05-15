@@ -1,6 +1,6 @@
 """
 Tic-Tac-Toe API Backend
-Flask API server with Perfect Minimax AI agent
+Flask API server with Q-learning inference (epsilon-greedy by difficulty)
 """
 
 from flask import Flask, request, jsonify
@@ -11,9 +11,7 @@ import os
 # Add backend directory to path
 sys.path.append(os.path.dirname(__file__))
 
-from agents.perfect_agent import PerfectMinimaxAgent
-from agents.easy_agent import EasyAgent
-from agents.medium_agent import MediumAgent
+from agents.qlearning_agent import QLearningInferenceAgent, EPSILON_BY_DIFFICULTY
 from core.tictactoe import TicTacToe
 
 app = Flask(__name__)
@@ -40,10 +38,50 @@ CORS(app, resources={
     }
 })
 
-# Initialize the AI agents
-easy_agent = EasyAgent()
-medium_agent = MediumAgent()
-hard_agent = PerfectMinimaxAgent()
+# The agent handles its own path resolution: Q_TABLE_PATH env var, then
+# backend/ or repo-root q_table_clean.json (preferred) → q_table.json (legacy).
+q_agent = QLearningInferenceAgent()
+if q_agent.loaded_path:
+    print(f"Q-table path: {q_agent.loaded_path}")
+
+
+def _parse_move_request(data):
+    """
+    Validate move request JSON. Returns (game, difficulty, None) on success,
+    or (None, None, (response, status)) on error.
+    """
+    if not data:
+        return None, None, (jsonify({"error": "No JSON data provided"}), 400)
+
+    board = data.get("board")
+    player = data.get("player")
+
+    if not board:
+        return None, None, (jsonify({"error": "Board state is required"}), 400)
+
+    if not isinstance(board, list) or len(board) != 9:
+        return None, None, (jsonify({"error": "Board must be a list of 9 elements"}), 400)
+
+    if player is None:
+        return None, None, (jsonify({"error": "Player is required"}), 400)
+
+    for i, cell in enumerate(board):
+        if cell not in [0, 1, -1]:
+            return None, None, (jsonify({"error": f"Invalid value {cell} at position {i}"}), 400)
+
+    game = TicTacToe()
+    game.board = board.copy()
+    game.current_player = player
+
+    if game.check_winner():
+        return None, None, (jsonify({"error": "Game is already won"}), 400)
+
+    if len(game.get_available_actions()) == 0:
+        return None, None, (jsonify({"error": "No available moves"}), 400)
+
+    difficulty = (data.get("difficulty") or "hard").lower()
+    return game, difficulty, None
+
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -51,203 +89,60 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "message": "Tic-Tac-Toe API is running",
-        "agents": {
-            "easy": easy_agent.name,
-            "medium": medium_agent.name,
-            "hard": hard_agent.name
+        "agent": "Q-Learning (epsilon-greedy)",
+        "q_table_loaded": q_agent.is_ready(),
+        "q_states": q_agent.state_count(),
+        "load_error": q_agent.load_error,
+        "policy": {
+            "epsilon_by_difficulty": EPSILON_BY_DIFFICULTY,
         }
     })
+
 
 @app.route('/api/move', methods=['POST'])
 def get_ai_move():
     """
-    Get AI move for given board state
-    
+    Get AI move for given board state and difficulty (epsilon-greedy).
+
     Expected JSON:
     {
-        "board": [0, 1, -1, 0, 0, 0, 0, 0, 0],  # 9-element array: 0=empty, 1=X, -1=O
-        "player": -1  # Current player: 1=X, -1=O (AI should be -1)
+        "board": [0, 1, -1, 0, 0, 0, 0, 0, 0],
+        "player": -1,
+        "difficulty": "easy" | "medium" | "hard"
     }
-    
-    Returns:
-    {
-        "move": 4,  # Position index (0-8)
-        "message": "AI plays position 4",
-        "board": [0, 1, -1, 0, -1, 0, 0, 0, 0]  # Updated board
-    }
+    difficulty defaults to "hard" if omitted.
     """
     try:
         data = request.get_json()
-        
-        if not data:
-            return jsonify({"error": "No JSON data provided"}), 400
-        
-        board = data.get('board')
-        player = data.get('player')
-        
-        if not board:
-            return jsonify({"error": "Board state is required"}), 400
-        
-        if not isinstance(board, list) or len(board) != 9:
-            return jsonify({"error": "Board must be a list of 9 elements"}), 400
-        
-        if player is None:
-            return jsonify({"error": "Player is required"}), 400
-        
-        # Validate board values
-        for i, cell in enumerate(board):
-            if cell not in [0, 1, -1]:
-                return jsonify({"error": f"Invalid value {cell} at position {i}"}), 400
-        
-        # Create game instance
-        game = TicTacToe()
-        game.board = board.copy()
-        game.current_player = player
-        
-        # Check if game is already over
-        if game.check_winner():
-            return jsonify({"error": "Game is already won"}), 400
-        
-        if len(game.get_available_actions()) == 0:
-            return jsonify({"error": "No available moves"}), 400
-        
-        # Get AI move (hard difficulty)
-        ai_move = hard_agent.choose_action(game)
-        
-        # Make the move to get updated board
+        game, difficulty, err = _parse_move_request(data)
+        if err:
+            return err
+
+        ai_move = q_agent.choose_move(game, difficulty)
         game.make_move(ai_move)
-        
+
         return jsonify({
             "move": ai_move,
-            "message": f"AI plays position {ai_move}",
+            "message": f"AI ({difficulty}) plays position {ai_move}",
             "board": game.board,
             "game_over": game.game_over,
             "winner": game.winner
         })
-        
+
     except Exception as e:
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
-@app.route('/api/move/easy', methods=['POST'])
-def get_easy_ai_move():
-    """Get easy AI move (random)"""
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({"error": "No JSON data provided"}), 400
-        
-        board = data.get('board')
-        player = data.get('player')
-        
-        if not board:
-            return jsonify({"error": "Board state is required"}), 400
-        
-        if not isinstance(board, list) or len(board) != 9:
-            return jsonify({"error": "Board must be a list of 9 elements"}), 400
-        
-        if player is None:
-            return jsonify({"error": "Player is required"}), 400
-        
-        # Validate board values
-        for i, cell in enumerate(board):
-            if cell not in [0, 1, -1]:
-                return jsonify({"error": f"Invalid value {cell} at position {i}"}), 400
-        
-        # Create game instance
-        game = TicTacToe()
-        game.board = board.copy()
-        game.current_player = player
-        
-        # Check if game is already over
-        if game.check_winner():
-            return jsonify({"error": "Game is already won"}), 400
-        
-        if len(game.get_available_actions()) == 0:
-            return jsonify({"error": "No available moves"}), 400
-        
-        # Get easy AI move
-        ai_move = easy_agent.choose_action(game)
-        
-        # Make the move to get updated board
-        game.make_move(ai_move)
-        
-        return jsonify({
-            "move": ai_move,
-            "message": f"Easy AI plays position {ai_move}",
-            "board": game.board,
-            "game_over": game.game_over,
-            "winner": game.winner
-        })
-        
-    except Exception as e:
-        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
-
-@app.route('/api/move/medium', methods=['POST'])
-def get_medium_ai_move():
-    """Get medium AI move (heuristic)"""
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({"error": "No JSON data provided"}), 400
-        
-        board = data.get('board')
-        player = data.get('player')
-        
-        if not board:
-            return jsonify({"error": "Board state is required"}), 400
-        
-        if not isinstance(board, list) or len(board) != 9:
-            return jsonify({"error": "Board must be a list of 9 elements"}), 400
-        
-        if player is None:
-            return jsonify({"error": "Player is required"}), 400
-        
-        # Validate board values
-        for i, cell in enumerate(board):
-            if cell not in [0, 1, -1]:
-                return jsonify({"error": f"Invalid value {cell} at position {i}"}), 400
-        
-        # Create game instance
-        game = TicTacToe()
-        game.board = board.copy()
-        game.current_player = player
-        
-        # Check if game is already over
-        if game.check_winner():
-            return jsonify({"error": "Game is already won"}), 400
-        
-        if len(game.get_available_actions()) == 0:
-            return jsonify({"error": "No available moves"}), 400
-        
-        # Get medium AI move
-        ai_move = medium_agent.choose_action(game)
-        
-        # Make the move to get updated board
-        game.make_move(ai_move)
-        
-        return jsonify({
-            "move": ai_move,
-            "message": f"Medium AI plays position {ai_move}",
-            "board": game.board,
-            "game_over": game.game_over,
-            "winner": game.winner
-        })
-        
-    except Exception as e:
-        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
 @app.route('/api/validate', methods=['POST'])
 def validate_board():
     """
     Validate board state and return game status
-    
+
     Expected JSON:
     {
         "board": [0, 1, -1, 0, 0, 0, 0, 0, 0]
     }
-    
+
     Returns:
     {
         "valid": true,
@@ -258,58 +153,54 @@ def validate_board():
     """
     try:
         data = request.get_json()
-        
         if not data or 'board' not in data:
             return jsonify({"error": "Board state is required"}), 400
-        
+
         board = data['board']
-        
+
         if not isinstance(board, list) or len(board) != 9:
             return jsonify({"error": "Board must be a list of 9 elements"}), 400
-        
-        # Validate board values
+
         for i, cell in enumerate(board):
             if cell not in [0, 1, -1]:
                 return jsonify({"error": f"Invalid value {cell} at position {i}"}), 400
-        
-        # Create game instance
+
         game = TicTacToe()
         game.board = board.copy()
-        
-        # Check for winner
+
         game.check_winner()
-        
+
         return jsonify({
             "valid": True,
             "game_over": game.game_over,
             "winner": game.winner,
             "available_moves": game.get_available_actions()
         })
-        
+
     except Exception as e:
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
 
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({"error": "Endpoint not found"}), 404
 
+
 @app.errorhandler(405)
 def method_not_allowed(error):
     return jsonify({"error": "Method not allowed"}), 405
 
+
 if __name__ == '__main__':
     print("Starting Tic-Tac-Toe API server...")
-    print("AI agents loaded:")
-    print(f"  - Easy: {easy_agent.name}")
-    print(f"  - Medium: {medium_agent.name}")
-    print(f"  - Hard: {hard_agent.name}")
+    print(f"Q-learning inference: loaded={q_agent.is_ready()}, states={q_agent.state_count()}")
+    if q_agent.load_error:
+        print(f"  Note: {q_agent.load_error} (API will use random legal moves as fallback)")
     print("Available endpoints:")
     print("  GET  /api/health - Health check")
-    print("  POST /api/move - Get hard AI move")
-    print("  POST /api/move/easy - Get easy AI move")
-    print("  POST /api/move/medium - Get medium AI move")
+    print("  POST /api/move - Get AI move (body: board, player, difficulty)")
     print("  POST /api/validate - Validate board state")
-    
+
     port = int(os.environ.get('PORT', 5001))
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
     app.run(debug=debug_mode, host='0.0.0.0', port=port)

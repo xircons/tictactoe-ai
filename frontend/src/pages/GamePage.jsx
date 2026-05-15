@@ -78,16 +78,8 @@ const GamePage = () => {
   const getAIMoveFromAPI = useCallback(async (currentBoard) => {
     try {
       const apiBoard = convertBoardToAPI(currentBoard)
-      
-      // Determine endpoint based on difficulty
-      let endpoint = API_CONFIG.ENDPOINTS.MOVE
-      if (difficulty === 'easy') {
-        endpoint = '/api/move/easy'
-      } else if (difficulty === 'medium') {
-        endpoint = '/api/move/medium'
-      }
-      
-      const apiUrl = API_CONFIG.getBaseUrl() + endpoint
+
+      const apiUrl = API_CONFIG.getBaseUrl() + API_CONFIG.ENDPOINTS.MOVE
       
       console.log(`[AI REQUEST] Calling ${difficulty} AI...`)
       console.log('   API URL:', apiUrl)
@@ -100,7 +92,8 @@ const GamePage = () => {
         },
         body: JSON.stringify({
           board: apiBoard,
-          player: -1
+          player: -1,
+          difficulty
         })
       })
       
