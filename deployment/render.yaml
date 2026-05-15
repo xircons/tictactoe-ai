@@ -1,16 +1,29 @@
 # Render.com deployment configuration
+# Push to main → Render auto-deploys.
+#
+# After first deploy:
+#   1. Note the assigned URL (e.g. https://tictactoe-ai-api.onrender.com)
+#   2. Set that URL in the Vercel project env var VITE_API_PRODUCTION_URL
+#   3. Confirm the Vercel frontend URL is allowed in CORS (backend/main.py)
+#
+# The Q-table model file (q_table_clean.json) is committed to the repo, so the
+# backend resolves it automatically — no extra env vars required.
+
 services:
   - type: web
-    name: tictactoe-qlearning-api
+    name: tictactoe-ai-api
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: cd backend && gunicorn main:app --bind 0.0.0.0:$PORT --timeout 30 --workers 1
+    healthCheckPath: /api/health
     envVars:
       - key: FLASK_ENV
         value: production
-      - key: PORT
-        value: $PORT
-      # Optional: absolute path to weights if not using default backend/q_table.json
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # Override only if your model file lives somewhere non-standard.
+      # Default search: env Q_TABLE_PATH → backend/q_table_clean.json →
+      # repo-root q_table_clean.json → legacy q_table.json fallback.
       # - key: Q_TABLE_PATH
-      #   value: /opt/render/project/src/backend/q_table.json
+      #   value: /opt/render/project/src/q_table_clean.json

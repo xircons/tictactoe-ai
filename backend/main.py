@@ -15,26 +15,37 @@ from agents.qlearning_agent import QLearningInferenceAgent, EPSILON_BY_DIFFICULT
 from core.tictactoe import TicTacToe
 
 app = Flask(__name__)
-# Configure CORS to allow requests from GitHub Pages, localhost, and Render.com
+
+# Allowed origins for the API. Set ALLOWED_ORIGINS env var to a comma-separated
+# list to extend at runtime — e.g. "https://my-app.vercel.app,https://example.com"
+# — without editing this file.
+_default_origins = [
+    # Vercel — production frontends and preview deployments
+    "https://*.vercel.app",
+    # GitHub Pages (legacy)
+    "https://xircons.github.io",
+    "https://*.github.io",
+    # Local development
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://localhost:5001",
+    "http://127.0.0.1:5001",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+    "file://",
+    "null",
+]
+_extra = os.environ.get("ALLOWED_ORIGINS", "").strip()
+_origins = _default_origins + [o.strip() for o in _extra.split(",") if o.strip()]
+
 CORS(app, resources={
     r"/api/*": {
-        "origins": [
-            "https://xircons.github.io",
-            "https://*.github.io",
-            "http://localhost:3000",
-            "http://localhost:5173",  # Vite default port
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",  # Vite default port
-            "http://localhost:5001",
-            "http://127.0.0.1:5001",
-            "http://localhost:5500",
-            "http://127.0.0.1:5500",
-            "file://",
-            "null"
-        ],
+        "origins": _origins,
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type"],
-        "supports_credentials": False
+        "supports_credentials": False,
     }
 })
 
