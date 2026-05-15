@@ -12,5 +12,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true
   },
-  base: process.env.NODE_ENV === 'production' ? '/tictactoe-qlearning/' : '/'
+  // Vercel serves the app at the domain root, so base is '/'.
+  // (If you still need a GitHub Pages build, set VITE_BASE=/tictactoe-ai/ in the env.)
+  base: process.env.VITE_BASE || '/'
 })
