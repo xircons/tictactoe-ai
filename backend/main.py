@@ -3,6 +3,7 @@ Tic-Tac-Toe API Backend
 Flask API server with Q-learning inference (epsilon-greedy by difficulty)
 """
 
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sys
@@ -19,12 +20,16 @@ app = Flask(__name__)
 # Allowed origins for the API. Set ALLOWED_ORIGINS env var to a comma-separated
 # list to extend at runtime — e.g. "https://my-app.vercel.app,https://example.com"
 # — without editing this file.
+#
+# NOTE: flask-cors interprets any string containing regex metacharacters (like
+# `*`) as a regex pattern, NOT a glob. So "https://*.vercel.app" is a BROKEN
+# regex (it matches "https://.vercel.app", not real subdomains). Use proper
+# regex patterns below — and `re.compile(...)` so flask-cors uses them as-is.
 _default_origins = [
-    # Vercel — production frontends and preview deployments
-    "https://*.vercel.app",
+    # Vercel — production frontends and preview deployments (any *.vercel.app)
+    re.compile(r"^https://.*\.vercel\.app$"),
     # GitHub Pages (legacy)
-    "https://xircons.github.io",
-    "https://*.github.io",
+    re.compile(r"^https://.*\.github\.io$"),
     # Local development
     "http://localhost:3000",
     "http://localhost:5173",
